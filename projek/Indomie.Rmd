@@ -1,0 +1,282 @@
+---
+title: "Indomie"
+author: "Edwina"
+date: "1/23/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r }
+library(SnowballC)
+library(Rstem)
+library(twitteR)
+library(tm)
+library(NLP)
+library(SentimentAnalysis)
+library(plyr)
+library(ggplot2)
+library(RColorBrewer)
+library(wordcloud)
+library(sentiment)
+library(e1071)
+library(caret)
+library(syuzhet)
+
+#mengakses API Twitter
+reqURL <- "http://api.twitter.com/oath/request_token"
+accessURL <- "https://api.twitter.com/oauth/access_token"
+CUSTOMER_KEY <- "CBODyGHJiiF2vJpG7wSdlWcB9" 
+CUSTOMER_SECRET <- "KeE4RdXKURE2KLArE9J6I1wDZnC2QFDCF7WUxvnviTMbFkHUfB" 
+ACCESS_TOKEN <- "386381161-TqnjQHRC3rvjnf878gLRJUaNi9E5EeWahITgjf9C" 
+ACCESS_secret <- "pdanDiAzQefekiXm3O7EkekGyKs7ZCdWnm8CLL4pyN8uB" 
+setup_twitter_oauth(CUSTOMER_KEY, CUSTOMER_SECRET, ACCESS_TOKEN, ACCESS_secret)
+```
+
+Tarik Data 
+```{r pressure, echo=FALSE}
+some_tweets <- searchTwitter('Indomie', n=1000, lang='en')
+some_txt <- sapply(some_tweets, function(x) x$getText()) 
+write.csv(some_txt, file = 'dataIndomie.csv')
+```
+
+Cleaning Data, Ubah ke data lowercase
+```{r}
+#cleaning data
+some_txt = sapply(some_tweets, function(x) x$getText())
+# remove retweet entities
+some_txt = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", some_txt)
+# remove at people
+some_txt = gsub("@\\w+", "", some_txt)
+# remove punctuation
+some_txt = gsub("[[:punct:]]", "", some_txt)
+# remove numbers
+some_txt = gsub("[[:digit:]]", "", some_txt)
+# remove html links
+some_txt = gsub("http\\w+", "", some_txt)
+# remove unnecessary spaces
+some_txt = gsub("[ \t]{2,}", "", some_txt)
+some_txt = gsub("^\\s+|\\s+$", "", some_txt)
+some_txt = gsub("note", "", some_txt)
+some_txt = gsub("and", "", some_txt)
+some_txt = gsub("for", "", some_txt)
+some_txt = gsub("this", "", some_txt)
+some_txt = gsub("with", "", some_txt)
+some_txt = gsub("was", "", some_txt)
+some_txt = gsub("https\\w+", "was", some_txt)
+# define "tolower error handling" function 
+try.error = function(x)
+{
+  # create missing value
+  y = NA
+  # tryCatch error
+  try_error = tryCatch(tolower(x), error=function(e) e)
+  # if not an error
+  if (!inherits(try_error, "error"))
+    y = tolower(x)
+  # result
+  return(y)
+}
+```
+
+```{r}
+# lower case using try.error with sapply 
+some_txt = sapply(some_txt, try.error)
+# remove NAs in some_txt
+some_txt = some_txt[!is.na(some_txt)]
+names(some_txt) = NULL
+write.csv(some_txt, file = 'dataIndomieCleaned.csv')
+```
+
+
+Sentiment Analysis dengan NRC
+```{r}
+twiter <-read.csv("dataIndomieCleaned.csv",stringsAsFactors = FALSE)
+review <- as.character(twiter$x)
+#Calls the NRC sentiment dictionary to calculate the presence of eight different emotions and their corresponding valence in a text file.
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+review_combine<-cbind(twiter$x,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+```
+
+
+Klasifikasi dg Naive Bayes dan Word Cloud
+```{r}
+# classify emotion
+class_emo = classify_emotion(twiter, algorithm="bayes", prior=1.0)
+# get emotion best fit
+emotion = class_emo[,7]
+# substitute NA's by "unknown"
+emotion[is.na(emotion)] = "unknown"
+# classify polarity
+class_pol = classify_polarity(twiter, algorithm="bayes")
+# get polarity best fit
+polarity = class_pol[,4]
+
+sent_df = data.frame(text=twiter, emotion=emotion,
+                     polarity=polarity, stringsAsFactors=FALSE)
+sent_df = within(sent_df,
+                 emotion <- factor(emotion, levels=names(sort(table(emotion), decreasing=TRUE))))
+write.csv(sent_df, file = 'dataSentimenIndomie.csv')
+```
+
+
+```{r}
+head(sent_df,20)
+table(sent_df$emotion)
+docs <- Corpus(VectorSource(twiter))
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+KataKata <- data.frame(word = names (v), freq=v)
+head(KataKata,10)
+set.seed(1234)
+wordcloud(words = KataKata$word, freq = KataKata$freq, scale=c(5.2,.6), min.freq=20, max.words=200, random.order=FALSE, random.color=TRUE, rot.per=0.4, colors=brewer.pal(8, "Dark2"))
+
+
+```
+Plot Sentimen Emosional 
+
+```{r}
+plotSentiments1 <- function(sentiment_dataframe, title) 
+    {
+      library(ggplot2)
+      ggplot(sentiment_dataframe, aes(x=emotion)) + 
+        geom_bar(aes(y=..count.., fill=emotion)) + 
+        scale_fill_brewer(palette="Dark2") + 
+        ggtitle(title) + 
+        theme(legend.position="right") + 
+        ylab("Number of Tweets") + 
+        xlab("Emotion Categories")
+    }
+#plotting tweets emotions
+plotSentiments1(sent_df, "Analisis Sentimen Pencarian : Indomie (EN)")
+
+```
+
+Plot Sentimen Polarisasi
+```{r}
+plotSentiments2 <- function(sent_df, title)
+    {
+      library(ggplot2)
+      ggplot(sent_df, aes(x=polarity)) +
+        geom_bar(aes(y=..count.., fill=polarity)) +
+        scale_fill_brewer(palette="RdGy") +
+        ggtitle(title) +
+        theme(legend.position="right") +
+        ylab("Number of Tweets") +
+        xlab("Polarity Categories")
+}
+#plotting tweets polarity
+plotSentiments2(sent_df, "Analisis Sentimen Pencarian : Indomie (EN)")
+```
+
+
+```{r}
+ui <- fluidPage(
+    titlePanel("Sentiment Analysis INDOMIE [EN]"),
+        mainPanel(
+            
+            tabsetPanel(type = "tabs",
+                        tabPanel("Wordcloud", plotOutput("Wordcloud")),
+                        tabPanel("NRC", plotOutput("NRC")), 
+                        tabPanel("Naive Bayes - Emotion", plotOutput('NBEmotion')),
+                        # Output Data Dalam Tabel
+                        tabPanel("Naive Bayes - Polarity", plotOutput("NBPolarity"))
+                        
+                        )
+        )
+    )
+# SERVER
+server <- function(input, output) {
+  
+  
+  
+    # Output Data
+    output$NRC <-renderPlot({
+        twiter <-read.csv("dataIndomieCleaned.csv",stringsAsFactors = FALSE)
+        review <- as.character(twiter$x)
+        #Calls the NRC sentiment dictionary to calculate the presence of eight different emotions and their corresponding valence in a text file.
+        get_nrc_sentiment('happy')
+        get_nrc_sentiment('excitement')
+        s<-get_nrc_sentiment(review)
+        review_combine<-cbind(twiter$x,s)
+        par(mar=rep(3,4))
+        barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+    })
+
+    output$Wordcloud <- renderPlot({
+      
+      # classify emotion
+      class_emo = classify_emotion(twiter, algorithm="bayes", prior=1.0)
+      # get emotion best fit
+      emotion = class_emo[,7]
+      # substitute NA's by "unknown"
+      emotion[is.na(emotion)] = "unknown"
+      # classify polarity
+      class_pol = classify_polarity(twiter, algorithm="bayes")
+      # get polarity best fit
+      polarity = class_pol[,4]
+      
+      sent_df = data.frame(text=twiter, emotion=emotion,
+                           polarity=polarity, stringsAsFactors=FALSE)
+      sent_df = within(sent_df,
+                       emotion <- factor(emotion, levels=names(sort(table(emotion), decreasing=TRUE))))
+      write.csv(sent_df, file = 'dataSentimenIndomie.csv')
+      head(sent_df,20)
+      table(sent_df$emotion)
+      docs <- Corpus(VectorSource(twiter))
+      dtm <- TermDocumentMatrix(docs)
+      m <- as.matrix(dtm)
+      v <- sort(rowSums(m),decreasing=TRUE)
+      KataKata <- data.frame(word = names (v), freq=v)
+      head(KataKata,10)
+      set.seed(1234)
+      wordcloud(words = KataKata$word, freq = KataKata$freq, scale=c(5.2,.6), min.freq=20, max.words=200, random.order=FALSE, random.color=TRUE, rot.per=0.4, colors=brewer.pal(8, "Dark2"))
+     }, height=600)
+    
+    
+    output$NBEmotion <- renderPlot({
+      plotSentiments1 <- function(sentiment_dataframe, title) 
+        {
+          library(ggplot2)
+          ggplot(sentiment_dataframe, aes(x=emotion)) + 
+            geom_bar(aes(y=..count.., fill=emotion)) + 
+            scale_fill_brewer(palette="Dark2") + 
+            ggtitle(title) + 
+            theme(legend.position="right") + 
+            ylab("Number of Tweets") + 
+            xlab("Emotion Categories")
+        }
+    #plotting tweets emotions
+    plotSentiments1(sent_df, "Analisis Sentimen Pencarian : Indomie (EN)")
+  })
+    
+    output$NBPolarity <- renderPlot({
+    plotSentiments2 <- function(sent_df, title)
+        {
+          library(ggplot2)
+          ggplot(sent_df, aes(x=polarity)) +
+            geom_bar(aes(y=..count.., fill=polarity)) +
+            scale_fill_brewer(palette="RdGy") +
+            ggtitle(title) +
+            theme(legend.position="right") +
+            ylab("Number of Tweets") +
+            xlab("Polarity Categories")
+        }
+    #plotting tweets polarity
+    plotSentiments2(sent_df, "Analisis Sentimen Pencarian : Indomie (EN)")
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
+
