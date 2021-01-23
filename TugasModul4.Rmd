@@ -1,0 +1,85 @@
+---
+title: "Tugas Modul 4"
+author: "Edwina A C 123170095"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Tugas Prak-DS Modul 4
+```{r}
+library(dslabs)
+data("murders")
+```
+
+1. Simpan ke var pop
+```{r}
+pop <-murders$population
+```
+
+2. Gunakan fungsi sort untuk mengurutkan variabel "pop"
+```{r}
+sort(pop)
+```
+sort menampilkan data populasi dari terkecil hingga terbesar.
+
+Selanjutnya, mencari nilai populasi terkecil dengan operator ([)
+```{r}
+min(pop)
+```
+
+
+2. Menampilkan indeks dari data yang memiliki nilai populasi terkecil mengggunakan fungsi order
+```{r}
+index <- order(pop)
+index[1]
+```
+
+3. Fungsi which.min untuk menampilkan hasil seperti nomor 2
+```{r}
+which.min(pop)
+```
+
+4. Menampilkan nama negara yang memiliki populasi terkecil
+```{r}
+murders$state[index[1]]
+```
+Pada soal no 2 kita telah menggunakan fungsi order untuk menampilkan index yang telah diurutkan dan menyimpannya pada variabel "_index_", maka sekarang kita tinggal menampilkan variabel _state_ yang sesuai dengan index tersebut.
+
+5. Penggunaan fungsi rank untuk menentukan peringkat populasi dari tiap negara bagian dan pembuatan data frame baru untuk hasil pemeringkatannya.
+```{r}
+ranks <- rank(murders$population)
+my_df <- data.frame(negarabagian = murders$state, ranking = ranks)
+```
+
+6. Urutkan my_df dengan fungsi order
+```{r}
+ind <- order(my_df$ranking)
+my_df$negarabagian[ind]
+```
+
+7. Plot visualisasi total pembunuhan terhadap populasi
+```{r}
+population_in_millions <- log10(murders$population)
+total_gun_murders <- murders$total
+plot(population_in_millions, total_gun_murders)
+```
+
+8. Histogram dari populasi negara bagian
+```{r}
+population_in_millions <- murders$population/10^6
+hist(population_in_millions)
+```
+
+9. Boxplot dari populasi negara bagian berdasarkan wilayahnya
+```{r}
+murders$region_num <- ifelse(murders$region == "Northeast", "NorthEast",
+                      ifelse(murders$region == "South","South",
+                      ifelse(murders$region == "North Central","North Central1", "North Cental 2")))
+boxplot(murders$population/10^6 ~ murders$region_num, data=murders)
+```
